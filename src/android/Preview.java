@@ -31,6 +31,7 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
   int facing = Camera.CameraInfo.CAMERA_FACING_BACK;
   int viewWidth;
   int viewHeight;
+  boolean scaleToFit = false;
 
   Preview(Context context) {
     super(context);
@@ -146,6 +147,8 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
       Log.d(TAG, mPreviewSize.width + " " + mPreviewSize.height);
 
       camera.setParameters(parameters);
+
+      requestLayout();
     } catch (IOException exception) {
       Log.e(TAG, exception.getMessage());
     }
@@ -162,6 +165,8 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
 
     if (mSupportedPreviewSizes != null) {
       mPreviewSize = getOptimalPreviewSize(mSupportedPreviewSizes, width, height);
+
+      requestLayout();
     }
   }
 
@@ -189,35 +194,26 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
         LOG.d(TAG, "previewWidth:" + previewWidth + " previewHeight:" + previewHeight);
       }
 
-      int nW;
-      int nH;
-      int top;
-      int left;
-
-      float scale = 1.0f;
-
-      // Center the child SurfaceView within the parent.
-      if (width * previewHeight < height * previewWidth) {
-        Log.d(TAG, "center horizontally");
-        int scaledChildWidth = (int)((previewWidth * height / previewHeight) * scale);
-        nW = (width + scaledChildWidth) / 2;
-        nH = (int)(height * scale);
-        top = 0;
-        left = (width - scaledChildWidth) / 2;
+      double widthRatio = (double)width / (double)previewWidth; // Determine ratio between available width and preview width
+      double heightRatio = (double)height / (double)previewHeight; // Determine ratio between available height and preview height
+      double ratio;
+      if (scaleToFit == true) {
+        ratio = Math.min(widthRatio, heightRatio);
       } else {
-        Log.d(TAG, "center vertically");
-        int scaledChildHeight = (int) ((previewHeight * width / previewWidth) * scale);
-        nW = (int) (width * scale);
-        nH = (height + scaledChildHeight) / 2;
-        top = (height - scaledChildHeight) / 2;
-        left = 0;
+        ratio = Math.max(widthRatio, heightRatio);
       }
-      child.layout(left, top, nW, nH);
+
+      int nW = (int)((double)previewWidth * ratio); // Compute the new width
+      int nH = (int)((double)previewHeight * ratio); // Compute the new height
+      int left = (width - nW) / 2; // Compute the left margin (will be 0 or positive on "contain", 0 or negative on "cover")
+      int top = (height - nH) / 2; // Compute the top margin (will be 0 or positive on "contain", 0 or negative on "cover")
+
+      child.layout(left, top, left + nW, top + nH);
 
       Log.d("layout", "left:" + left);
       Log.d("layout", "top:" + top);
-      Log.d("layout", "right:" + nW);
-      Log.d("layout", "bottom:" + nH);
+      Log.d("layout", "right:" + (left + nW));
+      Log.d("layout", "bottom:" + (top + nH));
     }
   }
 
@@ -245,20 +241,20 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
     }
   }
   private Camera.Size getOptimalPreviewSize(List<Camera.Size> sizes, int w, int h) {
-    final double ASPECT_TOLERANCE = 0.1;
-    double targetRatio = (double) w / h;
-    if (displayOrientation == 90 || displayOrientation == 270) {
-      targetRatio = (double) h / w;
-    }
-
     if(sizes == null){
       return null;
     }
 
+    final double ASPECT_TOLERANCE = 0.1;
+    double targetRatio = (double) w / h;
+    int targetHeight = h;
+    if (displayOrientation == 90 || displayOrientation == 270) {
+      targetRatio = (double) h / w;
+      targetHeight = w;
+    }
+
     Camera.Size optimalSize = null;
     double minDiff = Double.MAX_VALUE;
-
-    int targetHeight = h;
 
     // Try to find an size match aspect ratio and size
     for (Camera.Size size : sizes) {
@@ -296,10 +292,10 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
         }
         Camera.Parameters parameters = mCamera.getParameters();
         parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
-        requestLayout();
         //mCamera.setDisplayOrientation(90);
         mCamera.setParameters(parameters);
         mCamera.startPreview();
+        requestLayout();
       } catch (Exception exception) {
         Log.e(TAG, "Exception caused by surfaceChanged()", exception);
       }

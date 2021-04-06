@@ -49,6 +49,7 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
   private static final String START_CAMERA_ACTION = "startCamera";
   private static final String STOP_CAMERA_ACTION = "stopCamera";
   private static final String PREVIEW_SIZE_ACTION = "setPreviewSize";
+  private static final String PREVIEW_DIMENSIONS_ACTION = "setPreviewDimensions";
   private static final String SWITCH_CAMERA_ACTION = "switchCamera";
   private static final String TAKE_PICTURE_ACTION = "takePicture";
   private static final String START_RECORD_VIDEO_ACTION = "startRecordVideo";
@@ -112,7 +113,7 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
 
     if (START_CAMERA_ACTION.equals(action)) {
       if (cordova.hasPermission(permissions[0])) {
-        return startCamera(args.getInt(0), args.getInt(1), args.getInt(2), args.getInt(3), args.getString(4), args.getBoolean(5), args.getBoolean(6), args.getBoolean(7), args.getString(8), args.getBoolean(9), args.getBoolean(10), args.getBoolean(11), callbackContext);
+        return startCamera(args.getInt(0), args.getInt(1), args.getInt(2), args.getInt(3), args.getString(4), args.getBoolean(5), args.getBoolean(6), args.getBoolean(7), args.getString(8), args.getBoolean(9), args.getBoolean(10), args.getBoolean(11), args.optBoolean(12, false), callbackContext);
       } else {
         this.execCallback = callbackContext;
         this.execArgs = args;
@@ -146,6 +147,8 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
       return getMaxZoom(callbackContext);
     } else if (PREVIEW_SIZE_ACTION.equals(action)) {
       return setPreviewSize(args.getInt(0), args.getInt(1), callbackContext);
+    } else if (PREVIEW_DIMENSIONS_ACTION.equals(action)) {
+      return setPreviewDimensions(args.getInt(0), args.getInt(1), args.getInt(2), args.getInt(3), args.optBoolean(4, false), callbackContext);
     } else if (SUPPORTED_FLASH_MODES_ACTION.equals(action)) {
       return getSupportedFlashModes(callbackContext);
     } else if (GET_FLASH_MODE_ACTION.equals(action)) {
@@ -209,7 +212,7 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
     }
 
     if(requestCode == CAM_REQ_CODE){
-      startCamera(this.execArgs.getInt(0), this.execArgs.getInt(1), this.execArgs.getInt(2), this.execArgs.getInt(3), this.execArgs.getString(4), this.execArgs.getBoolean(5), this.execArgs.getBoolean(6), this.execArgs.getBoolean(7), this.execArgs.getString(8), this.execArgs.getBoolean(9), this.execArgs.getBoolean(10), this.execArgs.getBoolean(11), this.execCallback);
+      startCamera(this.execArgs.getInt(0), this.execArgs.getInt(1), this.execArgs.getInt(2), this.execArgs.getInt(3), this.execArgs.getString(4), this.execArgs.getBoolean(5), this.execArgs.getBoolean(6), this.execArgs.getBoolean(7), this.execArgs.getString(8), this.execArgs.getBoolean(9), this.execArgs.getBoolean(10), this.execArgs.getBoolean(11), this.execArgs.optBoolean(12, false), this.execCallback);
     }else if(requestCode == VID_REQ_CODE){
       startRecordVideo(this.execArgs.getString(0), this.execArgs.getInt(1), this.execArgs.getInt(2), this.execArgs.getInt(3), this.execArgs.getBoolean(4),  this.execCallback);
     }
@@ -242,19 +245,21 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
       return true;
     }
 
-    List<Camera.Size> supportedSizes;
     Camera camera = fragment.getCamera();
-    supportedSizes = camera.getParameters().getSupportedPictureSizes();
+    List<Camera.Size> supportedSizes = camera.getParameters().getSupportedPictureSizes();
+    List<Camera.Size> supportedPreviewSizes = camera.getParameters().getSupportedPreviewSizes();
     if (supportedSizes != null) {
       JSONArray sizes = new JSONArray();
       for (int i=0; i<supportedSizes.size(); i++) {
         Camera.Size size = supportedSizes.get(i);
         int h = size.height;
         int w = size.width;
+        boolean preview = supportedPreviewSizes != null && supportedPreviewSizes.contains(size);
         JSONObject jsonSize = new JSONObject();
         try {
-          jsonSize.put("height", new Integer(h));
-          jsonSize.put("width", new Integer(w));
+          jsonSize.put("height", h);
+          jsonSize.put("width", w);
+          jsonSize.put("preview", preview);
         }
         catch(JSONException e){
           e.printStackTrace();
@@ -268,7 +273,7 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
     return true;
   }
 
-  private boolean startCamera(int x, int y, int width, int height, String defaultCamera, Boolean tapToTakePicture, Boolean dragEnabled, final Boolean toBack, String alpha, boolean tapFocus, boolean disableExifHeaderStripping, boolean storeToFile, CallbackContext callbackContext) {
+  private boolean startCamera(int x, int y, int width, int height, String defaultCamera, Boolean tapToTakePicture, Boolean dragEnabled, final Boolean toBack, String alpha, boolean tapFocus, boolean disableExifHeaderStripping, boolean storeToFile, boolean scaleToFit, CallbackContext callbackContext) {
     Log.d(TAG, "start camera action");
 
     if (fragment != null) {
@@ -298,7 +303,7 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
     int computedWidth = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, width, metrics);
     int computedHeight = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, height, metrics);
 
-    fragment.setRect(computedX, computedY, computedWidth, computedHeight);
+    fragment.setRect(computedX, computedY, computedWidth, computedHeight, scaleToFit);
 
     startCameraCallbackContext = callbackContext;
 
@@ -854,6 +859,39 @@ public class CameraPreview extends CordovaPlugin implements CameraActivity.Camer
     params.setPreviewSize(width, height);
     fragment.setCameraParameters(params);
     camera.startPreview();
+
+    callbackContext.success();
+    return true;
+  }
+
+  private boolean setPreviewDimensions(int x, int y, int width, int height, boolean scaleToFit, CallbackContext callbackContext) {
+    if(this.hasCamera(callbackContext) == false){
+      return true;
+    }
+
+    DisplayMetrics metrics = cordova.getActivity().getResources().getDisplayMetrics();
+
+    // offset
+    int computedX = (int)TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, x, metrics);
+    int computedY = (int)TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, y, metrics);
+
+    // size
+    int computedWidth = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, width, metrics);
+    int computedHeight = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, height, metrics);
+
+    fragment.setRect(computedX, computedY, computedWidth, computedHeight, scaleToFit);
+
+    /*
+      The previous part should trigger a "surfaceChanged" on the preview surface (if size actually changed) which in turn should trigger the camera preview size to be setup correctly, however should this not be the case then the code below could be used to achieve this instead
+
+      Camera camera = fragment.getCamera();
+      Camera.Parameters params = camera.getParameters();
+
+      params.setPreviewSize(width, height);
+      fragment.setCameraParameters(params);
+
+      camera.startPreview();
+    */
 
     callbackContext.success();
     return true;

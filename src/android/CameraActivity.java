@@ -101,6 +101,7 @@ public class CameraActivity extends Fragment {
   public int height;
   public int x;
   public int y;
+  private boolean scaleToFit;
 
   private enum RecordingState {INITIALIZING, STARTED, STOPPED}
 
@@ -124,25 +125,29 @@ public class CameraActivity extends Fragment {
     return view;
   }
 
-  public void setRect(int x, int y, int width, int height){
+  public void setRect(int x, int y, int width, int height, boolean scaleToFit){
     this.x = x;
     this.y = y;
     this.width = width;
     this.height = height;
+    this.scaleToFit = scaleToFit;
+
+    if (mPreview != null) {
+      mPreview.scaleToFit = scaleToFit;
+
+      updateLayout();
+    }
   }
 
   private void createCameraPreview(){
     if(mPreview == null) {
       setDefaultCameraId();
 
-      //set box position and size
-      FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(width, height);
-      layoutParams.setMargins(x, y, 0, 0);
-      frameContainerLayout = (FrameLayout) view.findViewById(getResources().getIdentifier("frame_container", "id", appResourcesPackage));
-      frameContainerLayout.setLayoutParams(layoutParams);
+      updateLayout();
 
       //video view
       mPreview = new Preview(getActivity());
+      mPreview.scaleToFit = scaleToFit;
       mainLayout = (FrameLayout) view.findViewById(getResources().getIdentifier("video_view", "id", appResourcesPackage));
       mainLayout.setLayoutParams(new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT, RelativeLayout.LayoutParams.MATCH_PARENT));
       mainLayout.addView(mPreview);
@@ -869,5 +874,13 @@ public class CameraActivity extends Fragment {
     }
 
     return large;
+  }
+
+  private void updateLayout() {
+    //set box position and size
+    FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(width, height);
+    layoutParams.setMargins(x, y, 0, 0);
+    frameContainerLayout = (FrameLayout) view.findViewById(getResources().getIdentifier("frame_container", "id", appResourcesPackage));
+    frameContainerLayout.setLayoutParams(layoutParams);
   }
 }
