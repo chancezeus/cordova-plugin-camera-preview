@@ -416,6 +416,17 @@ CameraPreview.setExposureCompensation(3);
 CameraPreview.setPreviewSize({width: window.screen.width, height: window.screen.height});
 ```
 
+### getPreviewSize(cb, [errorCallback])
+
+<info>Retrieve the current size of the preview image.</info><br/>
+
+```javascript
+CameraPreview.getPreviewSize(function(size){
+  // note that the portrait version, width and height swapped, of these dimensions are also supported
+  console.log(size.width + 'x' + size.height);
+});
+```
+
 ### getSupportedPictureSizes(cb, [errorCallback])
 
 ```javascript

@@ -2,26 +2,24 @@ package com.cordovaplugincamerapreview;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.ImageFormat;
-import android.graphics.Rect;
-import android.graphics.YuvImage;
 import android.hardware.Camera;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.widget.RelativeLayout;
+
 import org.apache.cordova.LOG;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 
 class Preview extends RelativeLayout implements SurfaceHolder.Callback {
   private final String TAG = "Preview";
 
-  CustomSurfaceView mSurfaceView;
+  SurfaceView mSurfaceView;
   SurfaceHolder mHolder;
   Camera.Size mPreviewSize;
   List<Camera.Size> mSupportedPreviewSizes;
@@ -29,13 +27,13 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
   int cameraId;
   int displayOrientation;
   int facing = Camera.CameraInfo.CAMERA_FACING_BACK;
-  int viewWidth;
-  int viewHeight;
+  boolean scaleToFit = false;
+  private boolean forceUpdate = false;
 
   Preview(Context context) {
     super(context);
 
-    mSurfaceView = new CustomSurfaceView(context);
+    mSurfaceView = new SurfaceView(context);
     addView(mSurfaceView);
 
     requestLayout();
@@ -52,17 +50,17 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
     this.cameraId = cameraId;
 
     if (camera != null) {
-      mSupportedPreviewSizes = mCamera.getParameters().getSupportedPreviewSizes();
+      Camera.Parameters params = mCamera.getParameters();
+      mSupportedPreviewSizes = params.getSupportedPreviewSizes();
+      List<String> mFocusModes = params.getSupportedFocusModes();
+
       setCameraDisplayOrientation();
 
-      List<String> mFocusModes = mCamera.getParameters().getSupportedFocusModes();
-
-      Camera.Parameters params = mCamera.getParameters();
       if (mFocusModes.contains("continuous-picture")) {
         params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
-      } else if (mFocusModes.contains("continuous-video")){
+      } else if (mFocusModes.contains("continuous-video")) {
         params.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
-      } else if (mFocusModes.contains("auto")){
+      } else if (mFocusModes.contains("auto")) {
         params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
       }
       mCamera.setParameters(params);
@@ -72,20 +70,23 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
   public int getDisplayOrientation() {
     return displayOrientation;
   }
+
   public int getCameraFacing() {
     return facing;
   }
 
-  public void printPreviewSize(String from) {
-    Log.d(TAG, "printPreviewSize from " + from + ": > width: " + mPreviewSize.width + " height: " + mPreviewSize.height);
-  }
-  public void setCameraPreviewSize() {
-    if (mCamera != null) {
-      Camera.Parameters parameters = mCamera.getParameters();
-      parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
-      mCamera.setParameters(parameters);
-    }
-  }
+//  public void printPreviewSize(String from) {
+//    Log.d(TAG, "printPreviewSize from " + from + ": > width: " + mPreviewSize.width + " height: " + mPreviewSize.height);
+//  }
+
+//  public void setCameraPreviewSize() {
+//    if (mCamera != null) {
+//      Camera.Parameters parameters = mCamera.getParameters();
+//      parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
+//      mCamera.setParameters(parameters);
+//    }
+//  }
+
   private void setCameraDisplayOrientation() {
     Camera.CameraInfo info = new Camera.CameraInfo();
     int rotation = ((Activity) getContext()).getWindowManager().getDefaultDisplay().getRotation();
@@ -124,6 +125,8 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
     Log.d(TAG, "rotating preview " + displayOrientation + "deg");
 
     mCamera.setDisplayOrientation(displayOrientation);
+
+    forceUpdate = true;
   }
 
   public void switchCamera(Camera camera, int cameraId) {
@@ -140,12 +143,14 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
 
       Log.d("CameraPreview", "before setPreviewSize");
 
-      mSupportedPreviewSizes = parameters.getSupportedPreviewSizes();
-      mPreviewSize = getOptimalPreviewSize(mSupportedPreviewSizes, mSurfaceView.getWidth(), mSurfaceView.getHeight());
+      mPreviewSize = getOptimalPreviewSize(mSurfaceView.getWidth(), mSurfaceView.getHeight());
       parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
       Log.d(TAG, mPreviewSize.width + " " + mPreviewSize.height);
 
       camera.setParameters(parameters);
+
+      forceUpdate = true;
+      requestLayout();
     } catch (IOException exception) {
       Log.e(TAG, exception.getMessage());
     }
@@ -160,15 +165,15 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
     final int height = resolveSize(getSuggestedMinimumHeight(), heightMeasureSpec);
     setMeasuredDimension(width, height);
 
-    if (mSupportedPreviewSizes != null) {
-      mPreviewSize = getOptimalPreviewSize(mSupportedPreviewSizes, width, height);
-    }
+    mPreviewSize = getOptimalPreviewSize(width, height);
+    forceUpdate = true;
+    requestLayout();
   }
 
   @Override
   protected void onLayout(boolean changed, int l, int t, int r, int b) {
 
-    if (changed && getChildCount() > 0) {
+    if ((forceUpdate || changed) && getChildCount() > 0) {
       final View child = getChildAt(0);
 
       int width = r - l;
@@ -181,7 +186,7 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
         previewWidth = mPreviewSize.width;
         previewHeight = mPreviewSize.height;
 
-        if(displayOrientation == 90 || displayOrientation == 270) {
+        if (displayOrientation == 90 || displayOrientation == 270) {
           previewWidth = mPreviewSize.height;
           previewHeight = mPreviewSize.width;
         }
@@ -189,35 +194,26 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
         LOG.d(TAG, "previewWidth:" + previewWidth + " previewHeight:" + previewHeight);
       }
 
-      int nW;
-      int nH;
-      int top;
-      int left;
-
-      float scale = 1.0f;
-
-      // Center the child SurfaceView within the parent.
-      if (width * previewHeight < height * previewWidth) {
-        Log.d(TAG, "center horizontally");
-        int scaledChildWidth = (int)((previewWidth * height / previewHeight) * scale);
-        nW = (width + scaledChildWidth) / 2;
-        nH = (int)(height * scale);
-        top = 0;
-        left = (width - scaledChildWidth) / 2;
+      double widthRatio = (double) width / (double) previewWidth; // Determine ratio between available width and preview width
+      double heightRatio = (double) height / (double) previewHeight; // Determine ratio between available height and preview height
+      double ratio;
+      if (scaleToFit) {
+        ratio = Math.min(widthRatio, heightRatio);
       } else {
-        Log.d(TAG, "center vertically");
-        int scaledChildHeight = (int) ((previewHeight * width / previewWidth) * scale);
-        nW = (int) (width * scale);
-        nH = (height + scaledChildHeight) / 2;
-        top = (height - scaledChildHeight) / 2;
-        left = 0;
+        ratio = Math.max(widthRatio, heightRatio);
       }
-      child.layout(left, top, nW, nH);
+
+      int nW = (int) ((double) previewWidth * ratio); // Compute the new width
+      int nH = (int) ((double) previewHeight * ratio); // Compute the new height
+      int left = (width - nW) / 2; // Compute the left margin (will be 0 or positive on "contain", 0 or negative on "cover")
+      int top = (height - nH) / 2; // Compute the top margin (will be 0 or positive on "contain", 0 or negative on "cover")
+
+      child.layout(left, top, left + nW, top + nH);
 
       Log.d("layout", "left:" + left);
       Log.d("layout", "top:" + top);
-      Log.d("layout", "right:" + nW);
-      Log.d("layout", "bottom:" + nH);
+      Log.d("layout", "right:" + (left + nW));
+      Log.d("layout", "bottom:" + (top + nH));
     }
   }
 
@@ -244,24 +240,25 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
       Log.e(TAG, "Exception caused by surfaceDestroyed()", exception);
     }
   }
-  private Camera.Size getOptimalPreviewSize(List<Camera.Size> sizes, int w, int h) {
-    final double ASPECT_TOLERANCE = 0.1;
-    double targetRatio = (double) w / h;
-    if (displayOrientation == 90 || displayOrientation == 270) {
-      targetRatio = (double) h / w;
+
+  private Camera.Size getOptimalPreviewSize(int w, int h) {
+    if (mSupportedPreviewSizes == null || mSupportedPreviewSizes.isEmpty()) {
+      return null;
     }
 
-    if(sizes == null){
-      return null;
+    final double ASPECT_TOLERANCE = 0.1;
+    double targetRatio = (double) w / h;
+    int targetHeight = h;
+    if (displayOrientation == 90 || displayOrientation == 270) {
+      targetRatio = (double) h / w;
+      targetHeight = w;
     }
 
     Camera.Size optimalSize = null;
     double minDiff = Double.MAX_VALUE;
 
-    int targetHeight = h;
-
     // Try to find an size match aspect ratio and size
-    for (Camera.Size size : sizes) {
+    for (Camera.Size size : mSupportedPreviewSizes) {
       double ratio = (double) size.width / size.height;
       if (Math.abs(ratio - targetRatio) > ASPECT_TOLERANCE) continue;
       if (Math.abs(size.height - targetHeight) < minDiff) {
@@ -273,7 +270,7 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
     // Cannot find the one match the aspect ratio, ignore the requirement
     if (optimalSize == null) {
       minDiff = Double.MAX_VALUE;
-      for (Camera.Size size : sizes) {
+      for (Camera.Size size : mSupportedPreviewSizes) {
         if (Math.abs(size.height - targetHeight) < minDiff) {
           optimalSize = size;
           minDiff = Math.abs(size.height - targetHeight);
@@ -281,34 +278,37 @@ class Preview extends RelativeLayout implements SurfaceHolder.Callback {
       }
     }
 
+    if (optimalSize == null) {
+      optimalSize = mSupportedPreviewSizes.get(0);
+    }
+
     Log.d(TAG, "optimal preview size: w: " + optimalSize.width + " h: " + optimalSize.height);
+
     return optimalSize;
   }
 
   public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
-    if(mCamera != null) {
+    if (mCamera != null) {
       try {
-        // Now that the size is known, set up the camera parameters and begin
-        // the preview.
-        mSupportedPreviewSizes = mCamera.getParameters().getSupportedPreviewSizes();
-        if (mSupportedPreviewSizes != null) {
-          mPreviewSize = getOptimalPreviewSize(mSupportedPreviewSizes, w, h);
-        }
+        mPreviewSize = getOptimalPreviewSize(w, h);
+
         Camera.Parameters parameters = mCamera.getParameters();
         parameters.setPreviewSize(mPreviewSize.width, mPreviewSize.height);
-        requestLayout();
         //mCamera.setDisplayOrientation(90);
         mCamera.setParameters(parameters);
         mCamera.startPreview();
+
+        forceUpdate = true;
+        requestLayout();
       } catch (Exception exception) {
         Log.e(TAG, "Exception caused by surfaceChanged()", exception);
       }
     }
   }
 
-  public void setOneShotPreviewCallback(Camera.PreviewCallback callback) {
-    if(mCamera != null) {
-      mCamera.setOneShotPreviewCallback(callback);
-    }
-  }
+//  public void setOneShotPreviewCallback(Camera.PreviewCallback callback) {
+//    if (mCamera != null) {
+//      mCamera.setOneShotPreviewCallback(callback);
+//    }
+//  }
 }

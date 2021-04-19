@@ -34,6 +34,10 @@ CameraPreview.startCamera = function(options, onSuccess, onError) {
     options.tapFocus = false;
   }
 
+  if (typeof (options.scaleToFit) == 'undefined') {
+    options.scaleToFit = false;
+  }
+
   options.previewDrag = options.previewDrag || false;
 
   options.toBack = options.toBack || false;
@@ -47,18 +51,19 @@ CameraPreview.startCamera = function(options, onSuccess, onError) {
   options.storeToFile = options.storeToFile || false;
 
   exec(onSuccess, onError, PLUGIN_NAME, "startCamera", [
-    options.x, 
-    options.y, 
-    options.width, 
-    options.height, 
-    options.camera, 
-    options.tapPhoto, 
-    options.previewDrag, 
-    options.toBack, 
-    options.alpha, 
-    options.tapFocus, 
-    options.disableExifHeaderStripping, 
-    options.storeToFile
+    options.x,
+    options.y,
+    options.width,
+    options.height,
+    options.camera,
+    options.tapPhoto,
+    options.previewDrag,
+    options.toBack,
+    options.alpha,
+    options.tapFocus,
+    options.disableExifHeaderStripping,
+    options.storeToFile,
+    options.scaleToFit
   ]);
 };
 
@@ -145,6 +150,10 @@ CameraPreview.setPreviewSize = function(dimensions, onSuccess, onError) {
   dimensions.height = dimensions.height || window.screen.height;
 
   exec(onSuccess, onError, PLUGIN_NAME, "setPreviewSize", [dimensions.width, dimensions.height]);
+};
+
+CameraPreview.getPreviewSize = function(onSuccess, onError) {
+  exec(onSuccess, onError, PLUGIN_NAME, "getPreviewSize", []);
 };
 
 CameraPreview.getSupportedPictureSizes = function(onSuccess, onError) {
